@@ -27,9 +27,10 @@ ENV MODEL_HF_REPO=HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive \
     ALIAS=qwen3.6 \
     PORT=8000 \
     CTX=0 \
-    NGL=99 \
-    MODELS_DIR=/models \
-    LLAMA_CACHE=/models/cache
+    NGL=99
+# MODELS_DIR / LLAMA_CACHE are intentionally NOT set here — start-llama.sh
+# auto-detects the volume mount (/runpod-volume, /workspace, or local /models).
+# Set MODELS_DIR explicitly only to override that.
 
 EXPOSE 22 8000
 ENTRYPOINT ["/start-llama.sh"]

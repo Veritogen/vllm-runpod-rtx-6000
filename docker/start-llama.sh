@@ -25,9 +25,18 @@ service ssh start || /usr/sbin/sshd
 : "${TEMP:=1.0}"                 # model card "thinking" defaults
 : "${TOP_P:=0.95}"
 : "${TOP_K:=20}"
-: "${MODELS_DIR:=/models}"
-: "${LLAMA_CACHE:=${MODELS_DIR}/cache}"   # llama.cpp -hf download cache (put on a volume to persist)
+# Storage: prefer an attached persistent volume, auto-detecting the mount point
+# (serverless -> /runpod-volume, pod network volume -> /workspace), else local disk.
+# Set MODELS_DIR explicitly to override.
+if [ -z "${MODELS_DIR:-}" ]; then
+    if   [ -d /runpod-volume ]; then MODELS_DIR=/runpod-volume/models   # serverless
+    elif [ -d /workspace ];     then MODELS_DIR=/workspace/models       # pod network volume
+    else                             MODELS_DIR=/models                 # local container disk
+    fi
+fi
+: "${LLAMA_CACHE:=${MODELS_DIR}/cache}"   # llama.cpp -hf download cache (lives on the volume)
 export LLAMA_CACHE
+echo "[start] storage: MODELS_DIR=$MODELS_DIR  LLAMA_CACHE=$LLAMA_CACHE"
 mkdir -p "$MODELS_DIR" "$LLAMA_CACHE"
 
 # ---- Vision projector (mmproj) download ------------------------------------
