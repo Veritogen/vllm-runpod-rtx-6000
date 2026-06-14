@@ -1,0 +1,35 @@
+# Autostart llama.cpp server for Qwen3.6-35B-A3B (MoE) Q8 GGUF + vision, on RunPod.
+#
+# - Serves the LLM automatically on startup (OpenAI-compatible at :8000).
+# - Also runs sshd so you can SSH in to debug; the container stays up even if the
+#   server crashes (start-llama.sh backgrounds it + sleep infinity).
+# - Small, fast image (vs the NGC/vLLM stack); no Triton/torch.compile/ptxas dance.
+# - Usable for serverless too (swap the trailing `sleep infinity` for the server as
+#   the main process / a RunPod handler when you get there).
+#
+# Base: official llama.cpp CUDA 13 server image, works on RTX PRO 6000 / sm_120.
+# NOTE: avoid MXFP4 quants on sm_120; we use Q8_K_P (near-lossless, ~44GB).
+FROM ghcr.io/ggml-org/llama.cpp:server-cuda13
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openssh-server curl ca-certificates \
+    && mkdir -p /run/sshd /models \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/start-llama.sh /start-llama.sh
+RUN chmod +x /start-llama.sh
+
+# Defaults — override any of these in the RunPod template env or `docker run -e`.
+ENV MODEL_HF_REPO=HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive \
+    MODEL_QUANT=Q8_K_P \
+    MMPROJ_FILE=mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf \
+    ENABLE_VISION=1 \
+    ALIAS=qwen3.6 \
+    PORT=8000 \
+    CTX=0 \
+    NGL=99 \
+    MODELS_DIR=/models \
+    LLAMA_CACHE=/models/cache
+
+EXPOSE 22 8000
+ENTRYPOINT ["/start-llama.sh"]

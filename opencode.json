@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "runpod-vllm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "RunPod vLLM",
+      "options": {
+        "baseURL": "http://localhost:8000/v1",
+        "apiKey": "sk-local"
+      },
+      "models": {
+        "qwen3.6": {
+          "name": "Qwen3.6 40B (RunPod)"
+        }
+      }
+    }
+  },
+  "model": "runpod-vllm/qwen3.6"
+}

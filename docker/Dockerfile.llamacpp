@@ -1,0 +1,19 @@
+# Slim RunPod pod image for llama.cpp — text-only GGUF serving on Blackwell.
+# Far smaller than the NGC/vLLM image (fast pull), no Triton/torch.compile/vision
+# encoder, fast mmap load. Base is the official llama.cpp CUDA 13 server image,
+# which works on RTX PRO 6000 / sm_120.
+#
+# NOTE: avoid MXFP4 GGUF quants on sm_120 (broken). We use Q6_K/Q8_0/IQ4_XS.
+# If the prebuilt base won't run on the GPU (llama.cpp#22561), switch to a source
+# build with -DCMAKE_CUDA_ARCHITECTURES=120.
+FROM ghcr.io/ggml-org/llama.cpp:server-cuda13
+
+# RunPod pod plumbing: sshd + keep-alive. Override the base entrypoint (llama-server)
+# so the pod stays open for interactive use; run llama-server yourself in the shell.
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+    && mkdir -p /run/sshd && rm -rf /var/lib/apt/lists/*
+COPY docker/start.sh /start.sh
+RUN chmod +x /start.sh
+
+EXPOSE 22 8000
+ENTRYPOINT ["/start.sh"]
