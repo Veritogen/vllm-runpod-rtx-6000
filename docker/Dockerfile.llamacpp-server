@@ -16,6 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /run/sshd /models \
     && rm -rf /var/lib/apt/lists/*
 
+# Prefer IPv4 over IPv6 in the resolver. RunPod pods here have dead IPv6 egress,
+# and llama.cpp's -hf downloader can't force IPv4 — without this it falls into the
+# broken IPv6 path and downloads crawl. This ranks IPv4 ahead so -hf uses it.
+RUN echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
+
 COPY docker/start-llama.sh /start-llama.sh
 RUN chmod +x /start-llama.sh
 
@@ -26,7 +31,7 @@ ENV PATH=/app:$PATH \
 
 # Defaults — override any of these in the RunPod template env or `docker run -e`.
 ENV MODEL_HF_REPO=HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive \
-    MODEL_QUANT=Q8_K_P \
+    MODEL_FILE=Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf \
     MMPROJ_FILE=mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf \
     ENABLE_VISION=1 \
     ALIAS=qwen3.6 \

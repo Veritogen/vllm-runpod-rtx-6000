@@ -15,7 +15,7 @@ service ssh start || /usr/sbin/sshd
 
 # ---- Config (all env-overridable; defaults baked in the Dockerfile) --------
 : "${MODEL_HF_REPO:=HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive}"
-: "${MODEL_QUANT:=Q8_K_P}"
+: "${MODEL_FILE:=Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf}"
 : "${MMPROJ_FILE:=mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf}"
 : "${ENABLE_VISION:=1}"          # 0 = text-only (skip mmproj download, faster/lighter)
 : "${ALIAS:=qwen3.6}"
@@ -46,19 +46,34 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# ---- Vision -----------------------------------------------------------------
-# llama.cpp's -hf auto-downloads the repo's mmproj for multimodal models, so no
-# manual download is needed. Text-only mode explicitly disables it.
-mmproj_args=()
-if [ "$ENABLE_VISION" != "1" ]; then
-    mmproj_args=(--no-mmproj)
+# ---- Download (curl -4 + HF_TOKEN) -----------------------------------------
+# llama.cpp's own -hf downloader is unreliably slow on these pods; a plain
+# curl -4 (force IPv4) with the token hits full bandwidth (~200+ MB/s). Files
+# land on the volume, so this is a one-time cost reused on later starts.
+base_url="https://huggingface.co/${MODEL_HF_REPO}/resolve/main"
+fetch() {  # $1 = filename
+    local dest="${MODELS_DIR}/$1"
+    if [ -s "$dest" ]; then
+        echo "[start] present: $1"
+        return
+    fi
+    echo "[start] downloading: $1"
+    curl -4 -L -C - --fail --retry 5 --retry-delay 3 -o "$dest" \
+        ${HF_TOKEN:+-H "Authorization: Bearer ${HF_TOKEN}"} \
+        "${base_url}/$1?download=true"
+}
+
+fetch "$MODEL_FILE"
+serve_args=(-m "${MODELS_DIR}/${MODEL_FILE}")
+if [ "$ENABLE_VISION" = "1" ] && [ -n "$MMPROJ_FILE" ]; then
+    fetch "$MMPROJ_FILE"
+    serve_args+=(--mmproj "${MODELS_DIR}/${MMPROJ_FILE}")
 fi
 
-# ---- Serve (background; -hf downloads + caches the Q8 GGUF on first start) --
-echo "[start] llama-server  model=${MODEL_HF_REPO}:${MODEL_QUANT}  ctx=${CTX} ngl=${NGL} vision=${ENABLE_VISION}"
-llama-server \
-    -hf "${MODEL_HF_REPO}:${MODEL_QUANT}" \
-    "${mmproj_args[@]}" \
+# ---- Serve (background; container stays up via sleep infinity for SSH debug) -
+echo "[start] llama-server  model=${MODEL_FILE}  ctx=${CTX} ngl=${NGL} vision=${ENABLE_VISION}"
+/app/llama-server \
+    "${serve_args[@]}" \
     --host 0.0.0.0 --port "$PORT" \
     --alias "$ALIAS" \
     -ngl "$NGL" -c "$CTX" \

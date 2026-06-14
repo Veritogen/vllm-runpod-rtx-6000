@@ -105,3 +105,32 @@ Mount the pod volume at `/runpod-volume` to match serverless.
 - Decide **vision vs text-only** — drives vLLM(+VL) vs llama.cpp(GGUF).
 - Try **FP8** for ~2× throughput while keeping vLLM + tool calling.
 - Serverless (Phase 2): network volume for cache+weights, `min=0`/FlashBoot, idle timeout 2–5 min.
+
+## llama.cpp path — `HauhauCS/Qwen3.6-35B-A3B` Q8 (the working serving setup)
+Pivoted here for speed + simplicity. MoE (~3B active) → **fast tokens**; **vision via mmproj**;
+**tool calling works with just `--jinja`** (no parser flag needed, unlike vLLM's `qwen3_coder`).
+See `docker/Dockerfile.llamacpp-server` + `docker/start-llama.sh`.
+
+- **Base:** `ghcr.io/ggml-org/llama.cpp:server-cuda13` (works on sm_120). Binary at `/app/llama-server`;
+  its `.so`s are in `/app` → set **`LD_LIBRARY_PATH=/app`** (and `PATH=/app`) or it fails with
+  `command not found` / `libllama-server-impl.so: cannot open`.
+- **Networking gotcha:** these pods have **dead IPv6 egress**. huggingface.co resolves IPv6-first, so
+  anything not forcing IPv4 crawls. Forced-IPv4 curl hit **~220 MB/s** to the volume.
+  - `Dockerfile` adds `precedence ::ffff:0:0/96 100` to `/etc/gai.conf` (prefer IPv4).
+  - **llama.cpp's own `-hf` downloader is unreliably slow regardless** (even with token + IPv4 pref) →
+    **don't use `-hf`.** Download with `curl -4 -L` + `HF_TOKEN`, then serve local files with `-m`.
+- **Token:** HF gives authenticated traffic much better bandwidth → always pass `HF_TOKEN`.
+- **Context:** `-c 0` = native max 262144 (kept for the big window) but it makes startup slower +
+  more KV VRAM (the `-fit` probe). Lower `-c` for faster cold starts.
+- **Storage:** `start-llama.sh` auto-detects the mount (`/runpod-volume` serverless, `/workspace` pod,
+  else local). Pre-warm once → reused. Cold load is ~44GB → VRAM (~2–3 min from the volume).
+
+Working manual command (what the image automates):
+```bash
+cd /workspace/models
+B=https://huggingface.co/HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive/resolve/main
+curl -4 -L -C - --fail -H "Authorization: Bearer $HF_TOKEN" -o model-Q8_K_P.gguf "$B/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf"
+curl -4 -L -C - --fail -H "Authorization: Bearer $HF_TOKEN" -o mmproj-f16.gguf "$B/mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf"
+LD_LIBRARY_PATH=/app /app/llama-server -m model-Q8_K_P.gguf --mmproj mmproj-f16.gguf \
+  --host 0.0.0.0 --port 8000 --alias qwen3.6 -ngl 99 -c 0 --jinja
+```
