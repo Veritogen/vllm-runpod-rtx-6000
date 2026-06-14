@@ -46,6 +46,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # GHCR requires lowercase names; ${{ github.repository }} keeps the original case.
+      - name: Compute lowercase image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/vllm-runpod-pod" >> "$GITHUB_ENV"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -54,5 +58,5 @@ jobs:
           push: true
           platforms: linux/amd64       # RunPod GPUs are amd64
           tags: |
-            ghcr.io/${{ github.repository }}/vllm-runpod-pod:latest
-            ghcr.io/${{ github.repository }}/vllm-runpod-pod:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
