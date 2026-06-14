@@ -1,0 +1,58 @@
+name: build-pod-image
+
+# Builds the RunPod-ready pod image (NGC vLLM base + sshd/keep-alive) and pushes
+# it to GHCR. Runs in the cloud, so the large NGC base never touches a local disk
+# and no build server / SSH is needed. GITHUB_TOKEN authenticates to GHCR — no PAT.
+#
+# One-time after the first successful run: make the package PUBLIC so RunPod pulls
+# it without credentials — GitHub → your profile → Packages → vllm-runpod-pod →
+# Package settings → Change visibility → Public.
+#
+# Then set the RunPod pod image to:
+#   ghcr.io/<owner>/<repo>/vllm-runpod-pod:latest
+
+on:
+  workflow_dispatch:        # build on demand from the Actions tab
+  push:
+    paths:
+      - docker/Dockerfile.runpod-pod
+      - docker/start.sh
+      - scripts/start-vllm.sh
+      - .github/workflows/build-pod-image.yml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write       # lets GITHUB_TOKEN push to GHCR
+    steps:
+      - uses: actions/checkout@v4
+
+      # The NGC base is large (~tens of GB uncompressed); reclaim runner disk first.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+          docker-images: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.runpod-pod
+          push: true
+          platforms: linux/amd64       # RunPod GPUs are amd64
+          tags: |
+            ghcr.io/${{ github.repository }}/vllm-runpod-pod:latest
+            ghcr.io/${{ github.repository }}/vllm-runpod-pod:${{ github.sha }}

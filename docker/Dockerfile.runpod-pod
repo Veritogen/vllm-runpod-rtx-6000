@@ -1,0 +1,24 @@
+# RunPod-ready pod image: NGC vLLM base + the SSH/keep-alive plumbing RunPod pods
+# need. Build via CI (GitHub Actions) or on a working RunPod pod — NOT locally
+# (the NGC base is ~20GB+ and the laptop has ~8GB free).
+#
+# RunPod pods require: a long-running process (sleep infinity) + sshd seeded with
+# the injected PUBLIC_KEY. RunPod's agent handles telemetry/login outside the
+# container, so nothing else needs baking in.
+FROM nvcr.io/nvidia/vllm:26.05.post1-py3
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssh-server && \
+    mkdir -p /run/sshd && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY scripts/start-vllm.sh /usr/local/bin/start-vllm.sh
+COPY docker/start.sh /start.sh
+RUN chmod +x /usr/local/bin/start-vllm.sh /start.sh
+
+ENV DOWNLOAD_DIR=/runpod-volume/models
+EXPOSE 22 8000
+
+# Keeps the pod alive + starts sshd. Run vllm yourself in the shell, or set
+# MODEL_ID + AUTOSTART_VLLM=1 to launch it automatically.
+CMD ["/start.sh"]

@@ -1,0 +1,6 @@
+.env
+*.log
+__pycache__/
+*.pyc
+# model weights live on the network volume, never in the repo/image
+models/

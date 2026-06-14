@@ -1,0 +1,22 @@
+# Phase 1 pinned pod image (OPTIONAL).
+#
+# For first bring-up you can run the NGC container directly and `pip install`/
+# iterate live in the pod. Once the working combo is known, pin it here so pods
+# are reproducible. Weights are NOT baked in — they live on the network volume.
+#
+# Base: official NVIDIA NGC vLLM container — CUDA 13.1 + PyTorch + vLLM 0.20.1 +
+# FlashInfer prebuilt, validated for RTX PRO 6000 Blackwell (sm_120). Anonymously
+# pullable (no NGC login required).
+FROM nvcr.io/nvidia/vllm:26.05.post1-py3
+
+# Add only extras the base lacks. If a bleeding-edge Qwen3.6 finetune needs a
+# newer vLLM than 0.20.1, uncomment and pin the exact version discovered on the pod:
+# RUN pip install --no-cache-dir "vllm==<pinned>"
+
+COPY scripts/start-vllm.sh /usr/local/bin/start-vllm.sh
+RUN chmod +x /usr/local/bin/start-vllm.sh
+
+# MODEL_ID (and HF_TOKEN if private) are provided at runtime via the pod/endpoint env.
+ENV DOWNLOAD_DIR=/runpod-volume/models
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/start-vllm.sh"]
