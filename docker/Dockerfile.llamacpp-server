@@ -19,6 +19,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY docker/start-llama.sh /start-llama.sh
 RUN chmod +x /start-llama.sh
 
+# The llama.cpp binary and its shared libs live in /app; our custom entrypoint
+# drops the base image's working dir, so make them resolvable explicitly.
+ENV PATH=/app:$PATH \
+    LD_LIBRARY_PATH=/app
+
 # Defaults — override any of these in the RunPod template env or `docker run -e`.
 ENV MODEL_HF_REPO=HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive \
     MODEL_QUANT=Q8_K_P \

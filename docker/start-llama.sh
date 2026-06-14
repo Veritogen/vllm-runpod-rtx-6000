@@ -39,17 +39,19 @@ export LLAMA_CACHE
 echo "[start] storage: MODELS_DIR=$MODELS_DIR  LLAMA_CACHE=$LLAMA_CACHE"
 mkdir -p "$MODELS_DIR" "$LLAMA_CACHE"
 
-# ---- Vision projector (mmproj) download ------------------------------------
+# ---- Wait for network/DNS (RunPod networking can lag container start) -------
+for i in $(seq 1 30); do
+    getent hosts huggingface.co >/dev/null 2>&1 && break
+    echo "[start] waiting for DNS/network ($i)..."
+    sleep 2
+done
+
+# ---- Vision -----------------------------------------------------------------
+# llama.cpp's -hf auto-downloads the repo's mmproj for multimodal models, so no
+# manual download is needed. Text-only mode explicitly disables it.
 mmproj_args=()
-if [ "$ENABLE_VISION" = "1" ] && [ -n "$MMPROJ_FILE" ]; then
-    mmproj_path="${MODELS_DIR}/${MMPROJ_FILE}"
-    if [ ! -f "$mmproj_path" ]; then
-        echo "[start] downloading vision projector: $MMPROJ_FILE"
-        curl -L -C - --fail -o "$mmproj_path" \
-            ${HF_TOKEN:+-H "Authorization: Bearer ${HF_TOKEN}"} \
-            "https://huggingface.co/${MODEL_HF_REPO}/resolve/main/${MMPROJ_FILE}?download=true"
-    fi
-    mmproj_args=(--mmproj "$mmproj_path")
+if [ "$ENABLE_VISION" != "1" ]; then
+    mmproj_args=(--no-mmproj)
 fi
 
 # ---- Serve (background; -hf downloads + caches the Q8 GGUF on first start) --
